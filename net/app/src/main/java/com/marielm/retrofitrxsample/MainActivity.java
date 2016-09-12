@@ -58,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupRetrofit() {
         Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl("http://pogo-server.charles-oliver.com")
+                .baseUrl("https://retrofit-rx-sample.herokuapp.com")
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
 
