@@ -28,6 +28,7 @@ import retrofit2.adapter.rxjava.RxJavaCallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
+import rx.subscriptions.CompositeSubscription;
 
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_ADD = 0x01;
@@ -42,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     FloatingActionButton addFab;
 
     private PokemonService service;
+    private CompositeSubscription subscriptions = new CompositeSubscription();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -97,13 +99,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getPokemon() {
-        service.getAll()
+        subscriptions.add(service.getAll()
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(list -> {
                             showProgress(false);
                             recyclerView.setAdapter(new PokedexAdapter(list));
                         },
-                        error -> Log.d(getClass().getSimpleName(), error.getMessage()));
+                        error -> Log.d(getClass().getSimpleName(), error.getMessage())));
     }
 
     @Override
@@ -119,7 +121,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleAdd(PokemonInputModel input) {
-        service.addPokemon(input)
+        subscriptions.add(service.addPokemon(input)
                 .flatMap(post -> {
                     Snackbar.make(parent, "Pokemon Added", Snackbar.LENGTH_SHORT).show();
                     return service.getAll();
@@ -128,7 +130,13 @@ public class MainActivity extends AppCompatActivity {
                 .subscribe(results -> {
                     showProgress(false);
                     recyclerView.setAdapter(new PokedexAdapter(results));
-                });
+                }));
+    }
+
+    @Override
+    protected void onDestroy() {
+        subscriptions.unsubscribe();
+        super.onDestroy();
     }
 
     class PokedexAdapter extends RecyclerView.Adapter<PokedexAdapter.PokedexViewHolder> {
