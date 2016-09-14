@@ -9,7 +9,6 @@ import android.support.v4.content.ContextCompat;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.GridLayoutManager;
-import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -24,20 +23,23 @@ import java.util.List;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
-import okhttp3.ResponseBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
 import retrofit2.Retrofit;
+import retrofit2.adapter.rxjava.RxJavaCallAdapterFactory;
 import retrofit2.converter.gson.GsonConverterFactory;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_ADD = 0x01;
 
-    @BindView(R.id.parent_view) View parent;
-    @BindView(R.id.refresh_layout) SwipeRefreshLayout refreshLayout;
-    @BindView(R.id.recycler_view) RecyclerView recyclerView;
-    @BindView(R.id.button_add) FloatingActionButton addFab;
+    @BindView(R.id.parent_view)
+    View parent;
+    @BindView(R.id.refresh_layout)
+    SwipeRefreshLayout refreshLayout;
+    @BindView(R.id.recycler_view)
+    RecyclerView recyclerView;
+    @BindView(R.id.button_add)
+    FloatingActionButton addFab;
 
     private PokemonService service;
 
@@ -51,7 +53,7 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
         recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
-            public void onScrolled(RecyclerView recyclerView, int dx, int dy){
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                 if (dy > 0)
                     addFab.hide();
                 else if (dy < 0)
@@ -84,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl("https://retrofit-rx-sample.herokuapp.com")
                 .addConverterFactory(GsonConverterFactory.create())
+                .addCallAdapterFactory(RxJavaCallAdapterFactory.createWithScheduler(Schedulers.io()))
                 .build();
 
         service = retrofit.create(PokemonService.class);
@@ -94,23 +97,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getPokemon() {
-        service.getAll().enqueue(new Callback<List<PokemonModel>>() {
-            @Override
-            public void onResponse(Call<List<PokemonModel>> call, Response<List<PokemonModel>> response) {
-                showProgress(false);
-
-                final List<PokemonModel> results = response.body();
-
-                if (response.isSuccessful() && results.size() > 0) {
-                    recyclerView.setAdapter(new PokedexAdapter(results));
-                }
-            }
-
-            @Override
-            public void onFailure(Call<List<PokemonModel>> call, Throwable t) {
-                Log.d(getClass().getSimpleName(), t.getMessage());
-            }
-        });
+        service.getAll()
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(list -> {
+                            showProgress(false);
+                            recyclerView.setAdapter(new PokedexAdapter(list));
+                        },
+                        error -> Log.d(getClass().getSimpleName(), error.getMessage()));
     }
 
     @Override
@@ -126,35 +119,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleAdd(PokemonInputModel input) {
-        service.addPokemon(input).enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(Call<ResponseBody> call, Response<ResponseBody> response) {
-                Snackbar.make(parent,  "Pokemon Added", Snackbar.LENGTH_SHORT).show();
-
-                // this should be calling getPokemon() as we have now written it twice
-                // leavin as is to show chaining
-                service.getAll().enqueue(new Callback<List<PokemonModel>>() {
-                    @Override
-                    public void onResponse(Call<List<PokemonModel>> call, Response<List<PokemonModel>> response) {
-                        showProgress(false);
-
-                        final List<PokemonModel> results = response.body();
-
-                        if (response.isSuccessful() && results.size() > 0) {
-                            recyclerView.setAdapter(new PokedexAdapter(results));
-                        }
-                    }
-
-                    @Override
-                    public void onFailure(Call<List<PokemonModel>> call, Throwable t) {
-                    }
+        service.addPokemon(input)
+                .flatMap(post -> {
+                    Snackbar.make(parent, "Pokemon Added", Snackbar.LENGTH_SHORT).show();
+                    return service.getAll();
+                })
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(results -> {
+                    showProgress(false);
+                    recyclerView.setAdapter(new PokedexAdapter(results));
                 });
-            }
-
-            @Override
-            public void onFailure(Call<ResponseBody> call, Throwable t) {
-            }
-        });
     }
 
     class PokedexAdapter extends RecyclerView.Adapter<PokedexAdapter.PokedexViewHolder> {
@@ -185,9 +159,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         class PokedexViewHolder extends RecyclerView.ViewHolder {
-            @BindView(R.id.name) TextView name;
-            @BindView(R.id.pokedex_number) TextView number;
-            @BindView(R.id.sprite) ImageView sprite;
+            @BindView(R.id.name)
+            TextView name;
+            @BindView(R.id.pokedex_number)
+            TextView number;
+            @BindView(R.id.sprite)
+            ImageView sprite;
 
             public PokedexViewHolder(View itemView) {
                 super(itemView);
